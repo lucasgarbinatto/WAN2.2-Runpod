@@ -156,7 +156,7 @@ def load_workflow(path):
 
 def apply_common_settings(prompt, job_input, length, steps, mode):
     prompt["541"]["inputs"]["num_frames"] = length
-    if mode in ("flf2v", "multiref") and "end_image" in prompt["541"]["inputs"]:
+    if mode == "keyframes" and "end_image" in prompt["541"]["inputs"]:
         prompt["541"]["inputs"]["fun_or_fl2v_model"] = True
     prompt["135"]["inputs"]["positive_prompt"] = job_input["prompt"]
     prompt["135"]["inputs"]["negative_prompt"] = job_input.get("negative_prompt", DEFAULT_NEGATIVE)
@@ -180,30 +180,40 @@ def configure_single(prompt, image_path):
     prompt["244"]["inputs"]["image"] = stage_image_for_comfy(image_path)
 
 
-def configure_flf2v(prompt, paths):
+def configure_refonly(prompt, paths):
+    """Blend all refs via CLIP vision; only the first image anchors frame 0."""
+    n = len(paths)
     prompt["244"]["inputs"]["image"] = stage_image_for_comfy(paths[0])
-    prompt["617"]["inputs"]["image"] = stage_image_for_comfy(paths[-1])
-    prompt["193"]["inputs"]["image_1"] = ["171", 0]
-    prompt["193"]["inputs"]["image_2"] = ["613", 0]
+    prompt["541"]["inputs"].pop("end_image", None)
+    prompt["541"]["inputs"]["fun_or_fl2v_model"] = False
 
+    if n == 1:
+        prompt["193"]["inputs"]["image_1"] = ["171", 0]
+        prompt["193"]["inputs"].pop("image_2", None)
+        return
 
-def configure_multiref(prompt, paths):
-    prompt["244"]["inputs"]["image"] = stage_image_for_comfy(paths[0])
-    prompt["617"]["inputs"]["image"] = stage_image_for_comfy(paths[-1])
-    if len(paths) > 2:
+    if n > 1:
         prompt["620"]["inputs"]["image"] = stage_image_for_comfy(paths[1])
-    if len(paths) > 3:
+    if n > 2:
         prompt["621"]["inputs"]["image"] = stage_image_for_comfy(paths[2])
-    prompt["193"]["inputs"]["image_1"] = ["626", 0]
+    if n > 3:
+        prompt["617"]["inputs"]["image"] = stage_image_for_comfy(paths[3])
+
     prompt["193"]["inputs"].pop("image_2", None)
+    if n == 2:
+        prompt["193"]["inputs"]["image_1"] = ["624", 0]
+    elif n == 3:
+        prompt["193"]["inputs"]["image_1"] = ["625", 0]
+    else:
+        prompt["626"]["inputs"]["image1"] = ["625", 0]
+        prompt["626"]["inputs"]["image2"] = ["613", 0]
+        prompt["193"]["inputs"]["image_1"] = ["626", 0]
 
 
 def pick_workflow(ref_count):
     if ref_count <= 1:
         return "/new_Wan22_api.json", "single"
-    if ref_count == 2:
-        return "/new_Wan22_flf2v_api.json", "flf2v"
-    return "/new_Wan22_multiref_api.json", "multiref"
+    return "/new_Wan22_multiref_api.json", "refonly"
 
 
 def handler(job):
@@ -229,10 +239,8 @@ def handler(job):
 
     if mode == "single":
         configure_single(prompt, ref_paths[0])
-    elif mode == "flf2v":
-        configure_flf2v(prompt, ref_paths)
     else:
-        configure_multiref(prompt, ref_paths)
+        configure_refonly(prompt, ref_paths)
 
     ws_url = f"ws://{server_address}:8188/ws?clientId={client_id}"
     http_url = f"http://{server_address}:8188/"

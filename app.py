@@ -77,7 +77,11 @@ def generate(
 
 with gr.Blocks(title="WAN Multi-Ref Video") as demo:
     gr.Markdown("# WAN Multi-Reference Video")
-    gr.Markdown("Drop 1-4 reference images. First = start frame, last = end frame. All refs blend appearance.")
+    gr.Markdown(
+        "Drop 1–4 reference images (e.g. character + hat). "
+        "All images guide **appearance** via CLIP; the first image loosely anchors the opening frame. "
+        "Describe the combined scene in the prompt (e.g. *character wearing the hat, walking slowly*)."
+    )
     with gr.Row():
         with gr.Column():
             gallery = gr.File(
@@ -92,8 +96,9 @@ with gr.Blocks(title="WAN Multi-Ref Video") as demo:
                 lines=3,
             )
             ref_positions = gr.Textbox(
-                label="Ref positions (optional)",
-                placeholder="0,0.5,1.0  — leave empty for auto",
+                label="Ref positions (optional, reserved)",
+                placeholder="Not used in compose mode — leave empty",
+                visible=False,
             )
             duration = gr.Slider(
                 minimum=3,

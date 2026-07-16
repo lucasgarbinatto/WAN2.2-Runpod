@@ -34,11 +34,10 @@ Worker source files live in this folder; the root [Dockerfile](../Dockerfile) co
 | `length` | Frame count (default 81 = ~5s at 16fps) |
 
 **Modes:**
-- 1 ref -> standard I2V
-- 2 refs -> first/last frame (FLF2V)
-- 3-4 refs -> all refs blended in CLIP vision; first=start frame, last=end frame
+- 1 ref -> standard I2V (image anchors frame 0)
+- 2-4 refs -> **compose mode**: all refs averaged in CLIP vision for appearance; first ref loosely anchors frame 0 (no end-frame morph)
 
-`ref_positions` is recorded in the response for your client; temporal placement uses first/last frames with middle refs affecting appearance via CLIP blending. Full Wan22FMLF timeline control requires a future workflow upgrade (nodes are installed in the image).
+`ref_positions` is echoed in the response for clients but is not used for temporal keyframes in compose mode. For timeline keyframe control, Wan22FMLF nodes are installed in the image for a future upgrade.
 
 ## Test request (RunPod Requests tab)
 
