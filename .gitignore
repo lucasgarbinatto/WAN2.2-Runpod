@@ -1,0 +1,25 @@
+# Secrets
+.env
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Generated outputs
+*.mp4
+*.webm
+
+# Test artifacts
+test_pixel.png
+*.png
+# IDE / OS
+.cursor/
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
