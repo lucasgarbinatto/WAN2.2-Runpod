@@ -17,6 +17,12 @@ MAX_WAIT = 1800  # 30 minutes
 FPS = 16
 
 
+def snap_frames(value: int) -> int:
+    """Wan expects frame counts of the form 4n+1."""
+    frames = max(17, int(value))
+    return ((frames - 1 + 3) // 4) * 4 + 1
+
+
 def encode_image(path: str) -> str:
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
@@ -72,6 +78,7 @@ def build_input_data(
 
     if negative_prompt:
         input_data["negative_prompt"] = negative_prompt
+    input_data["length"] = snap_frames(input_data["length"])
     return input_data
 
 
@@ -169,7 +176,7 @@ def main() -> int:
             print(f"Image not found: {p}", file=sys.stderr)
             return 1
 
-    length = args.length if args.length is not None else int((args.duration or 5) * FPS)
+    length = snap_frames(args.length if args.length is not None else int((args.duration or 5) * FPS))
 
     print(f"Encoding {len(image_paths)} image(s)...")
     input_data = build_input_data(

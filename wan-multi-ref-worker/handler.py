@@ -3,8 +3,10 @@ import binascii
 import json
 import logging
 import os
+import shutil
 import subprocess
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
@@ -16,6 +18,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 server_address = os.getenv("SERVER_ADDRESS", "127.0.0.1")
+comfy_input_dir = os.getenv("COMFY_INPUT_DIR", "/ComfyUI/input")
 client_id = str(uuid.uuid4())
 
 DEFAULT_NEGATIVE = (
@@ -31,6 +34,22 @@ def to_nearest_multiple_of_16(value):
     numeric_value = float(value)
     adjusted = int(round(numeric_value / 16.0) * 16)
     return max(16, adjusted)
+
+
+def snap_frames(value):
+    """Wan expects frame counts of the form 4n+1."""
+    frames = max(17, int(value))
+    return ((frames - 1 + 3) // 4) * 4 + 1
+
+
+def stage_image_for_comfy(local_path):
+    """Copy image into ComfyUI's input folder; LoadImage only resolves names there."""
+    os.makedirs(comfy_input_dir, exist_ok=True)
+    basename = os.path.basename(local_path)
+    staged_name = f"{uuid.uuid4().hex[:8]}_{basename}"
+    staged_path = os.path.join(comfy_input_dir, staged_name)
+    shutil.copy2(local_path, staged_path)
+    return staged_name
 
 
 def save_base64_to_file(base64_data, temp_dir, output_filename):
@@ -87,8 +106,17 @@ def auto_ref_positions(n, length):
 def queue_prompt(prompt):
     url = f"http://{server_address}:8188/prompt"
     data = json.dumps({"prompt": prompt, "client_id": client_id}).encode("utf-8")
-    req = urllib.request.Request(url, data=data)
-    return json.loads(urllib.request.urlopen(req).read())
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"ComfyUI prompt rejected ({e.code}): {body}") from e
 
 
 def get_history(prompt_id):
@@ -126,8 +154,10 @@ def load_workflow(path):
         return json.load(f)
 
 
-def apply_common_settings(prompt, job_input, length, steps):
+def apply_common_settings(prompt, job_input, length, steps, mode):
     prompt["541"]["inputs"]["num_frames"] = length
+    if mode in ("flf2v", "multiref") and "end_image" in prompt["541"]["inputs"]:
+        prompt["541"]["inputs"]["fun_or_fl2v_model"] = True
     prompt["135"]["inputs"]["positive_prompt"] = job_input["prompt"]
     prompt["135"]["inputs"]["negative_prompt"] = job_input.get("negative_prompt", DEFAULT_NEGATIVE)
     prompt["220"]["inputs"]["seed"] = job_input.get("seed", 42)
@@ -147,23 +177,23 @@ def apply_common_settings(prompt, job_input, length, steps):
 
 
 def configure_single(prompt, image_path):
-    prompt["244"]["inputs"]["image"] = image_path
+    prompt["244"]["inputs"]["image"] = stage_image_for_comfy(image_path)
 
 
 def configure_flf2v(prompt, paths):
-    prompt["244"]["inputs"]["image"] = paths[0]
-    prompt["617"]["inputs"]["image"] = paths[-1]
+    prompt["244"]["inputs"]["image"] = stage_image_for_comfy(paths[0])
+    prompt["617"]["inputs"]["image"] = stage_image_for_comfy(paths[-1])
     prompt["193"]["inputs"]["image_1"] = ["171", 0]
     prompt["193"]["inputs"]["image_2"] = ["613", 0]
 
 
 def configure_multiref(prompt, paths):
-    prompt["244"]["inputs"]["image"] = paths[0]
-    prompt["617"]["inputs"]["image"] = paths[-1]
+    prompt["244"]["inputs"]["image"] = stage_image_for_comfy(paths[0])
+    prompt["617"]["inputs"]["image"] = stage_image_for_comfy(paths[-1])
     if len(paths) > 2:
-        prompt["620"]["inputs"]["image"] = paths[1]
+        prompt["620"]["inputs"]["image"] = stage_image_for_comfy(paths[1])
     if len(paths) > 3:
-        prompt["621"]["inputs"]["image"] = paths[2]
+        prompt["621"]["inputs"]["image"] = stage_image_for_comfy(paths[2])
     prompt["193"]["inputs"]["image_1"] = ["626", 0]
     prompt["193"]["inputs"].pop("image_2", None)
 
@@ -193,9 +223,9 @@ def handler(job):
     logger.info("ref_positions=%s", positions)
 
     prompt = load_workflow(workflow_file)
-    length = job_input.get("length", 81)
+    length = snap_frames(job_input.get("length", 81))
     steps = job_input.get("steps", 10)
-    apply_common_settings(prompt, job_input, length, steps)
+    apply_common_settings(prompt, job_input, length, steps, mode)
 
     if mode == "single":
         configure_single(prompt, ref_paths[0])
@@ -228,6 +258,9 @@ def handler(job):
 
     try:
         video_b64 = get_videos(ws, prompt)
+    except Exception as e:
+        logger.exception("generation failed")
+        return {"error": str(e)}
     finally:
         ws.close()
 
