@@ -1,0 +1,21 @@
+.git
+.venv
+venv
+.env
+.env.*
+!.env.example
+__pycache__
+*.py[cod]
+*.mp4
+.cursor
+.vscode
+.idea
+Thumbs.db
+.DS_Store
+
+# Client-only files (not needed in worker image)
+app.py
+generate_video.py
+requirements.txt
+test_multiref.py
+test_pixel.png

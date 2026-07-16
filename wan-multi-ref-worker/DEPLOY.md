@@ -1,36 +1,8 @@
 # Deploy Wan2.2 Multi-Reference Serverless Worker
 
-## 1. Push this folder to GitHub
+> **This repo is deployed from the root.** See [../DEPLOY.md](../DEPLOY.md) for RunPod setup.
 
-```bash
-cd wan-multi-ref-worker
-git init
-git add .
-git commit -m "Wan2.2 multi-ref serverless worker"
-git remote add origin YOUR_REPO_URL
-git push -u origin main
-```
-
-## 2. Network volume (optional)
-
-Skip this for the same fast cold starts as the Hub template — models are baked into the Docker image at build time.
-
-Only add a volume if you want to store extra LoRAs or large assets without rebuilding the image.
-
-## 3. Create Serverless Endpoint
-
-1. RunPod Console -> Serverless -> **New Endpoint**
-2. Source: **GitHub** -> select your repo (`wan-multi-ref-worker/`)
-3. Attach network volume only if you use one (optional)
-4. GPU: **A100 80GB** or **H100** (A6000 48GB may work with fp8)
-5. Settings:
-   - Max workers: 1-3
-   - Idle timeout: 5-10 min
-   - **Execution timeout: 3600000** (60 min)
-   - Flashboot: enabled
-6. Build and deploy — **first build takes 20-40 min** (downloads ~40GB models into the image). After that, workers start fast like the Hub template.
-
-## 4. Test request (RunPod Requests tab)
+Worker source files live in this folder; the root [Dockerfile](../Dockerfile) copies them into the image.
 
 ```json
 {
@@ -68,7 +40,7 @@ Only add a volume if you want to store extra LoRAs or large assets without rebui
 
 `ref_positions` is recorded in the response for your client; temporal placement uses first/last frames with middle refs affecting appearance via CLIP blending. Full Wan22FMLF timeline control requires a future workflow upgrade (nodes are installed in the image).
 
-## 5. Point your local client at the new endpoint
+## Test request (RunPod Requests tab)
 
 Update `.env`:
 
