@@ -42,7 +42,20 @@ RUNPOD_ENDPOINT_ID=your-endpoint-id
 RUNPOD_API_KEY=rpa_your_key
 ```
 
-## 4. Test (Requests tab)
+## 4. Test (Requests tab) — Ingredients
+
+```json
+{
+  "input": {
+    "prompt": "character at the desk, papers rustle, gentle camera push-in",
+    "character_image": "https://example.com/character-turnaround.png",
+    "scene_image": "https://example.com/office-scene.png",
+    "length": 81
+  }
+}
+```
+
+Legacy single-image still works:
 
 ```json
 {
@@ -57,7 +70,7 @@ RUNPOD_API_KEY=rpa_your_key
 ## 5. Use locally
 
 ```powershell
-python generate_video.py --image photo.png --prompt "gentle wind" --output out.mp4
+python generate_video.py --character char.png --scene office.png --prompt "gentle camera push-in" --output out.mp4
 python app.py
 ```
 

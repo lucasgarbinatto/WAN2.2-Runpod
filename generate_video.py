@@ -82,6 +82,19 @@ def build_input_data(
     return input_data
 
 
+def build_ingredients_input(
+    character_path: str,
+    scene_path: str,
+    prompt: str,
+    **kwargs,
+) -> dict:
+    """Ingredients mode: scene anchors frame 0, character guides appearance via CLIP."""
+    if not character_path or not scene_path:
+        raise ValueError("Both character_path and scene_path are required")
+    # Order matters for the worker: first ref = frame-0 anchor, second = CLIP compose.
+    return build_input_data([scene_path, character_path], prompt, **kwargs)
+
+
 def submit_job(endpoint_id: str, api_key: str, input_data: dict) -> str:
     url = f"https://api.runpod.ai/v2/{endpoint_id}/run"
     headers = {
@@ -144,6 +157,8 @@ def main() -> int:
     )
     parser.add_argument("--image", help="Single input image (legacy)")
     parser.add_argument("--ref-images", nargs="+", help="Multiple reference images (2-4)")
+    parser.add_argument("--character", help="Character reference image (ingredients mode)")
+    parser.add_argument("--scene", help="Scene / opening-frame reference (ingredients mode)")
     parser.add_argument("--ref-positions", default=None, help='e.g. "0,0.5,1.0"')
     parser.add_argument("--prompt", required=True, help="Motion / scene description")
     parser.add_argument("--output", default="output.mp4", help="Output MP4 path")
@@ -163,12 +178,19 @@ def main() -> int:
         print("Missing RUNPOD_ENDPOINT_ID or RUNPOD_API_KEY in .env", file=sys.stderr)
         return 1
 
-    if args.ref_images:
+    ingredients = bool(args.character or args.scene)
+    if ingredients and not (args.character and args.scene):
+        print("Ingredients mode requires both --character and --scene", file=sys.stderr)
+        return 1
+
+    if ingredients:
+        image_paths = [args.scene, args.character]
+    elif args.ref_images:
         image_paths = args.ref_images
     elif args.image:
         image_paths = [args.image]
     else:
-        print("Provide --image or --ref-images", file=sys.stderr)
+        print("Provide --character/--scene, --ref-images, or --image", file=sys.stderr)
         return 1
 
     for p in image_paths:
@@ -177,11 +199,7 @@ def main() -> int:
             return 1
 
     length = snap_frames(args.length if args.length is not None else int((args.duration or 5) * FPS))
-
-    print(f"Encoding {len(image_paths)} image(s)...")
-    input_data = build_input_data(
-        image_paths,
-        args.prompt,
+    common = dict(
         negative_prompt=args.negative_prompt,
         ref_positions=args.ref_positions,
         width=args.width,
@@ -191,6 +209,12 @@ def main() -> int:
         seed=args.seed,
         cfg=args.cfg,
     )
+
+    print(f"Encoding {len(image_paths)} image(s)...")
+    if ingredients:
+        input_data = build_ingredients_input(args.character, args.scene, args.prompt, **common)
+    else:
+        input_data = build_input_data(image_paths, args.prompt, **common)
 
     print("Submitting job...")
     job_id = submit_job(endpoint_id, api_key, input_data)

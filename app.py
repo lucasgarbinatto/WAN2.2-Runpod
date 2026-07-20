@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gradio UI: drop reference images, write prompt, watch the video."""
+"""Gradio UI: character + scene ingredients → video."""
 
 import os
 import tempfile
@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 from generate_video import (
     FPS,
-    build_input_data,
+    build_ingredients_input,
     save_video,
     submit_job,
     wait_for_completion,
@@ -19,25 +19,21 @@ from generate_video import (
 load_dotenv()
 
 
-def _paths_from_gallery(files) -> list[str]:
-    if not files:
-        return []
-    out = []
-    for f in files:
-        if isinstance(f, str):
-            out.append(f)
-        elif hasattr(f, "name"):
-            out.append(f.name)
-        else:
-            out.append(str(f))
-    return out
+def _path_from_file(f) -> str | None:
+    if not f:
+        return None
+    if isinstance(f, str):
+        return f
+    if hasattr(f, "name"):
+        return f.name
+    return str(f)
 
 
 def generate(
-    gallery_files,
+    character_file,
+    scene_file,
     prompt: str,
     duration: float,
-    ref_positions: str,
     progress=gr.Progress(track_tqdm=False),
 ):
     endpoint_id = os.getenv("RUNPOD_ENDPOINT_ID")
@@ -47,18 +43,18 @@ def generate(
     if not prompt or not prompt.strip():
         raise gr.Error("Write a prompt")
 
-    image_paths = _paths_from_gallery(gallery_files)
-    if not image_paths:
-        raise gr.Error("Drop at least one reference image")
+    character_path = _path_from_file(character_file)
+    scene_path = _path_from_file(scene_file)
+    if not character_path or not scene_path:
+        raise gr.Error("Drop both a character reference and a scene reference")
 
     length = int(duration * FPS)
-    positions = ref_positions.strip() or None
 
-    progress(0.1, desc=f"Encoding {len(image_paths)} image(s)...")
-    input_data = build_input_data(
-        image_paths,
+    progress(0.1, desc="Encoding character + scene...")
+    input_data = build_ingredients_input(
+        character_path,
+        scene_path,
         prompt.strip(),
-        ref_positions=positions,
         length=length,
     )
 
@@ -75,30 +71,29 @@ def generate(
     return out_path
 
 
-with gr.Blocks(title="WAN Multi-Ref Video") as demo:
-    gr.Markdown("# WAN Multi-Reference Video")
+with gr.Blocks(title="WAN Ingredients Video") as demo:
+    gr.Markdown("# WAN Ingredients Video")
     gr.Markdown(
-        "Drop 1–4 reference images (e.g. character + hat). "
-        "All images guide **appearance** via CLIP; the first image loosely anchors the opening frame. "
-        "Describe the combined scene in the prompt (e.g. *character wearing the hat, walking slowly*)."
+        "**Character** guides appearance (turnaround / close-up). "
+        "**Scene** anchors the opening frame (environment). "
+        "Describe motion and action in the prompt."
     )
     with gr.Row():
         with gr.Column():
-            gallery = gr.File(
-                label="Reference images (1-4)",
-                file_count="multiple",
+            character = gr.File(
+                label="Character reference",
+                file_types=["image"],
+                type="filepath",
+            )
+            scene = gr.File(
+                label="Scene reference",
                 file_types=["image"],
                 type="filepath",
             )
             prompt = gr.Textbox(
                 label="Prompt",
-                placeholder="person walks forward slowly, soft lighting",
+                placeholder="character at the desk, papers rustle, gentle camera push-in",
                 lines=3,
-            )
-            ref_positions = gr.Textbox(
-                label="Ref positions (optional, reserved)",
-                placeholder="Not used in compose mode — leave empty",
-                visible=False,
             )
             duration = gr.Slider(
                 minimum=3,
@@ -113,7 +108,7 @@ with gr.Blocks(title="WAN Multi-Ref Video") as demo:
 
     btn.click(
         fn=generate,
-        inputs=[gallery, prompt, duration, ref_positions],
+        inputs=[character, scene, prompt, duration],
         outputs=video,
     )
 

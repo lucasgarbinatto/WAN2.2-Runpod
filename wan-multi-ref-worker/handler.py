@@ -78,12 +78,23 @@ def resolve_image(item, temp_dir, filename):
 
 
 def collect_ref_images(job_input, task_id):
-    """Return list of local image paths from ref_images or legacy single-image fields."""
+    """Return list of local image paths from ref_images, ingredients, or legacy fields."""
     if "ref_images" in job_input and job_input["ref_images"]:
         paths = []
         for i, item in enumerate(job_input["ref_images"][:4]):
             paths.append(resolve_image(item, task_id, f"ref_{i}.jpg"))
         return paths
+
+    # Ingredients: scene anchors frame 0, character guides CLIP appearance.
+    character = job_input.get("character_image")
+    scene = job_input.get("scene_image")
+    if character or scene:
+        if not character or not scene:
+            raise ValueError("Ingredients mode requires both character_image and scene_image")
+        return [
+            resolve_image(scene, task_id, "scene.jpg"),
+            resolve_image(character, task_id, "character.jpg"),
+        ]
 
     if "image_path" in job_input:
         return [job_input["image_path"]]
@@ -221,9 +232,17 @@ def handler(job):
     logger.info("job keys: %s", list(job_input.keys()))
     task_id = f"task_{uuid.uuid4()}"
 
-    ref_paths = collect_ref_images(job_input, task_id)
+    try:
+        ref_paths = collect_ref_images(job_input, task_id)
+    except ValueError as e:
+        return {"error": str(e)}
     if not ref_paths:
-        return {"error": "No image provided. Use ref_images, image_base64, image_url, or image_path."}
+        return {
+            "error": (
+                "No image provided. Use character_image+scene_image, "
+                "ref_images, image_base64, image_url, or image_path."
+            )
+        }
 
     ref_count = len(ref_paths)
     workflow_file, mode = pick_workflow(ref_count)
